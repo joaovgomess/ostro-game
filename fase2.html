@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Jornada até a Polônia - Fase 2: O Voo</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #1a1a2e; /* Tom de fundo que fica fora do canvas */
+            color: #fff;
+            font-family: 'Press Start 2P', cursive;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            max-width: 100%;
+            aspect-ratio: 2 / 1;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            border: 4px solid #4a4e69;
+            border-radius: 8px;
+            background-color: #4cc9f0; /* Fundo azul claro temporário (Céu) */
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 4px;
+            image-rendering: pixelated;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .top-ui {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .inventory {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 8px;
+            font-size: 10px;
+        }
+
+        .phase-text {
+            margin-top: 10px; 
+            font-size: 10px; 
+            color: #ccc;
+        }
+
+        .inventory-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            opacity: 0.5;
+            transition: opacity 0.3s;
+        }
+
+        .inventory-item.collected {
+            opacity: 1;
+            color: #ffd700;
+        }
+
+        #game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 30px;
+            border: 2px solid #fff;
+            border-radius: 10px;
+            display: none;
+            pointer-events: auto;
+        }
+
+        #start-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.90);
+            padding: 30px;
+            border: 2px solid #4cc9f0;
+            border-radius: 10px;
+            pointer-events: auto;
+            width: 85%;
+            max-width: 500px;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-family: inherit;
+            background: #e63946;
+            color: white;
+            border: 2px solid #fff;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        button:hover {
+            background: #c1121f;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Canvas -->
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        
+        <!-- UI -->
+        <div id="ui-layer">
+            <div class="top-ui">
+                <div id="scoreDisplay">Distance: 0km</div>
+            </div>
+            <div class="phase-text">Level 2 - Atlantic Ocean</div>
+            
+            <div class="inventory">
+                <div id="inv-pandora" class="inventory-item">💍 Pandora (0)</div>
+                <div id="inv-flowers" class="inventory-item">🌹 Flowers (0)</div>
+                <div id="inv-pirulito" class="inventory-item">🍭 ChupaChups (0)</div>
+            </div>
+
+            <!-- TELA INICIAL -->
+            <div id="start-screen">
+                <h2 style="color: #4cc9f0;">Crossing the Ocean</h2>
+                <p style="margin-top: 15px; font-size: 10px; line-height: 1.8;">
+                    Vitor has boarded and is almost there! Now you need to help him cross the ocean and reach Poland.<br><br>
+                    <span style="color: #ffd700;">Level 2:</span> Avoid the storm clouds and birds until you cross the border!<br><br>
+                    <span style="color: #ffd700;">Controls:</span> HOLD the screen or the spacebar to gain altitude. Release to go down.
+                </p>
+                <button id="btn-play">▶ PLAY</button>
+            </div>
+            
+            <div id="game-over-screen">
+                <h2>GAME OVER!</h2>
+                <p style="margin-top: 15px; font-size: 12px;" id="finalScore">Try Again.</p>
+                <button id="btn-restart">▶ PLAY</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÃO DE INPUTS ---
+        // Aqui a lógica muda: precisamos saber se o botão está SENDO SEGURADO
+        class InputHandler {
+            constructor() {
+                this.isFlying = false;
+
+                // Teclado
+                window.addEventListener('keydown', (e) => {
+                    if (e.code === 'Space' || e.code === 'ArrowUp') this.isFlying = true;
+                });
+                window.addEventListener('keyup', (e) => {
+                    if (e.code === 'Space' || e.code === 'ArrowUp') this.isFlying = false;
+                });
+
+                // Touch
+                window.addEventListener('touchstart', () => this.isFlying = true);
+                window.addEventListener('touchend', () => this.isFlying = false);
+                
+                // Mouse (Bom para testar no PC sem usar o teclado)
+                window.addEventListener('mousedown', () => this.isFlying = true);
+                window.addEventListener('mouseup', () => this.isFlying = false);
+            }
+        }
+
+        // --- PARALLAX BACKGROUND ---
+        class Layer {
+            constructor(game, imageSrc, speedModifier) {
+                this.game = game;
+                this.image = new Image();
+                this.image.src = imageSrc;
+                this.speedModifier = speedModifier;
+                this.width = 800;
+                this.height = 400;
+                this.x = 0;
+                this.y = 0;
+            }
+
+            update() {
+                if (this.x <= -this.width) this.x = 0;
+                this.x -= this.game.speed * this.speedModifier;
+            }
+
+            draw(context) {
+                context.drawImage(this.image, this.x, this.y, this.width, this.height);
+                context.drawImage(this.image, this.x + this.width, this.y, this.width, this.height);
+            }
+        }
+
+        class Background {
+            constructor(game) {
+                this.game = game;
+                // PLACEHOLDERS: Substitua pelos cenários do oceano
+                this.layer1 = new Layer(this.game, 'assets/fase2/background/Ocean_8/1.png', 0.8);
+                this.layer2 = new Layer(this.game, 'assets/fase2/background/Ocean_8/2.png', 0.4);
+                this.layer3 = new Layer(this.game, 'assets/fase2/background/Ocean_8/3.png', 0.5);
+                this.layer4 = new Layer(this.game, 'assets/fase2/background/Ocean_8/4.png', 0.2);
+
+                
+                this.layers = [this.layer1, this.layer2, this.layer3, this.layer4];
+            }
+
+            update() {
+                this.layers.forEach(layer => layer.update());
+            }
+
+            draw(context) {
+                this.layers.forEach(layer => layer.draw(context));
+            }
+        }
+
+        // --- O JOGADOR (AVIÃO) ---
+        class Player {
+            constructor(game) {
+                this.game = game;
+                
+                // Dimensões do Avião
+                this.width = 100;
+                this.height = 100;
+                
+                // Posição Inicial
+                this.x = 100; 
+                this.y = this.game.height / 2; // Começa no meio da tela
+                
+                // Física Jetpack Joyride
+                this.vy = 0;
+                this.gravity = 0.5; // Força puxando para baixo
+                this.thrust = 0.8;  // Força puxando para cima quando segura o botão
+                this.maxFallSpeed = 7; // Velocidade máxima caindo
+                this.maxFlySpeed = -6; // Velocidade máxima subindo
+                
+                // Sprite
+                this.image = new Image();
+                this.image.src = 'assets/fase2/aviao.png'; // PLACEHOLDER
+                
+                this.hitboxOffset = { x: 20, y: 30, width: -40, height: -60 }; 
+            }
+
+            update(input, deltaTime) {
+                // Modo finalização da fase: Avião para de subir/descer e vai reto pra bandeira
+                if (this.game.polandModeActive) {
+                    this.vy = 0;
+                    this.x += 3; // O avião acelera para frente em direção à bandeira
+                    return;
+                }
+
+                // Aplica força dependendo do Input
+                if (input.isFlying) {
+                    this.vy -= this.thrust;
+                } else {
+                    this.vy += this.gravity;
+                }
+
+                // Limita a velocidade (Terminal Velocity)
+                if (this.vy > this.maxFallSpeed) this.vy = this.maxFallSpeed;
+                if (this.vy < this.maxFlySpeed) this.vy = this.maxFlySpeed;
+
+                // Move o Y
+                this.y += this.vy;
+
+                // LIMITES DA TELA
+                // Bateu no teto: Fica preso lá, velocidade Y zera pra não acumular força
+                if (this.y <= 0) {
+                    this.y = 0;
+                    this.vy = 0;
+                }
+                
+                // Bateu no Oceano (chão): GAME OVER
+                if (this.y + this.height >= this.game.height) {
+                    this.game.triggerGameOver();
+                }
+            }
+
+            draw(context) {
+                context.drawImage(this.image, this.x, this.y, this.width, this.height);
+                // context.strokeStyle = 'blue';
+                // context.strokeRect(this.getHitbox().x, this.getHitbox().y, this.getHitbox().width, this.getHitbox().height);
+            }
+
+            getHitbox() {
+                return {
+                    x: this.x + this.hitboxOffset.x,
+                    y: this.y + this.hitboxOffset.y,
+                    width: this.width + this.hitboxOffset.width,
+                    height: this.height + this.hitboxOffset.height
+                };
+            }
+        }
+
+        // --- OBSTÁCULOS VOADORES ---
+        class Obstacle {
+            constructor(game, type) {
+                this.game = game;
+                this.type = type; // 'cloud' ou 'bird'
+                this.markedForDeletion = false;
+                
+                this.image = new Image();
+                this.x = this.game.width;
+                
+                if (this.type === 'cloud') {
+                    // Nuvem de Tempestade: Grande, lenta, estática no ar
+                    this.width = 200;
+                    this.height = 150;
+                    // Nasce em uma altura aleatória (deixando margem de segurança)
+                    this.y = Math.random() * (this.game.height - this.height);
+                    this.vx = 0; // Move-se junto com a velocidade do cenário
+                    this.image.src = 'assets/fase2/Cloud_1.png';
+                    this.hitboxOffset = { x: 50, y: 50, width: -100, height: -100 };
+                } 
+                else if (this.type === 'bird') {
+                    // Pássaro: Menor, mais rápido que o cenário
+                    this.width = 60;
+                    this.height = 60;
+                    this.y = Math.random() * (this.game.height - this.height);
+                    this.vx = 2; // Velocidade extra indo para a esquerda
+                    this.image.src = 'assets/fase2/bird.png';
+                    this.hitboxOffset = { x: 5, y: 5, width: -10, height: -10 };
+                }
+            }
+
+            update(deltaTime) {
+                // Velocidade base do jogo + velocidade própria do obstáculo
+                this.x -= (this.game.speed + this.vx);
+                if (this.x + this.width < 0) this.markedForDeletion = true;
+            }
+
+            draw(context) {
+                context.drawImage(this.image, this.x, this.y, this.width, this.height);
+
+            // context.strokeStyle = 'blue';
+            // context.strokeRect(this.getHitbox().x, this.getHitbox().y, this.getHitbox().width, this.getHitbox().height);
+            }
+
+            getHitbox() {
+                return {
+                    x: this.x + this.hitboxOffset.x,
+                    y: this.y + this.hitboxOffset.y,
+                    width: this.width + this.hitboxOffset.width,
+                    height: this.height + this.hitboxOffset.height
+                };
+            }
+
+            c
+        }
+
+        // --- COLETÁVEIS ---
+        class Collectible {
+            constructor(game) {
+                this.game = game;
+                this.markedForDeletion = false;
+                
+                const items = ['pandora', 'flowers', 'pirulito'];
+                this.type = items[Math.floor(Math.random() * items.length)];
+                
+                this.width = 40;
+                this.height = 40;
+                this.x = this.game.width;
+                this.y = Math.random() * (this.game.height - 100) + 50; 
+                
+                this.angle = 0;
+                this.angleSpeed = Math.random() * 0.1 + 0.05;
+
+                this.image = new Image();
+                if(this.type === 'pandora') this.image.src = 'assets/geral/personagens/presentes/ironring.png';
+                else if(this.type === 'flower') this.image.src = 'assets/geral/personagens/presentes/Rose.png';
+                else if(this.type === 'pirulito') this.image.src = 'assets/geral/personagens/presentes/pirulito.png';
+            }
+
+            update(deltaTime) {
+                this.x -= this.game.speed;
+                this.y += Math.sin(this.angle) * 2; // Oscila mais forte na fase do avião
+                this.angle += this.angleSpeed;
+
+                if (this.x + this.width < 0) this.markedForDeletion = true;
+            }
+
+            draw(context) {
+                context.save(); // Salva o "pincel" atual para não vazar a cor pro resto do jogo
+
+                // 1. Configura as cores
+                context.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Fundo preto com 50% de transparência
+                context.strokeStyle = '#ffffff'; // Cor da borda (branca)
+                context.lineWidth = 2; // Espessura da borda
+
+                // 2. Desenha o fundo e a borda arredondada (efeito bolha)
+                context.beginPath();
+                context.roundRect(this.x, this.y, this.width, this.height, 8); // O 8 é o raio do arredondamento
+                context.fill();
+                context.stroke();
+
+                // 3. Desenha o seu sprite por cima
+                context.drawImage(this.image, this.x, this.y, this.width, this.height);
+
+                context.restore(); // Restaura o pincel
+            }
+
+            getHitbox() {
+                return { x: this.x, y: this.y, width: this.width, height: this.height };
+            }
+        }
+
+        // --- GERENCIADOR DO JOGO ---
+        class Game {
+            constructor(width, height) {
+                this.width = width;
+                this.height = height;
+                this.speed = 5; 
+                this.gameStarted = false; // Trava inicial
+                
+                this.background = new Background(this);
+                this.player = new Player(this);
+                this.input = new InputHandler();
+                
+                this.obstacles = [];
+                this.collectibles = [];
+                
+                this.obstacleTimer = 0;
+                this.obstacleInterval = 1200; // Obstáculos aparecem mais rápido no voo
+                this.collectibleTimer = 0;
+                this.collectibleInterval = 3000;
+                
+                // Lógica de Tempo da Fase 2
+                this.levelTimer = 0;
+                this.levelDuration = 30000; // 15s
+                this.distance = 0;
+                this.polandModeActive = false; 
+                this.flagX = this.width; 
+                
+                this.flagImage = new Image();
+                this.flagImage.src = 'assets/fase2/background/flag-poland.png'; // PLACEHOLDER BANDEIRA
+                this.flagWidth = 200;
+                this.flagHeight = this.height; // A bandeira cobre a altura toda como uma faixa de chegada
+                this.flagHitbox = {x: 0, y: 0, width: 0, height: 0};
+                
+                this.gameOver = false;
+                this.levelComplete = false;
+                
+                // HERANÇA DOS DADOS DA FASE 1
+                // Tenta puxar do localStorage, se não tiver nada (acessando direto), inicia zerado.
+                const savedData = localStorage.getItem('jornada_inventory');
+                if (savedData) {
+                    this.inventory = JSON.parse(savedData);
+                } else {
+                    this.inventory = { pandora: 0, flowers: 0, pirulito: 0 };
+                }
+
+                // Atualiza a UI imediatamente com os dados herdados
+                this.updateInventoryUI();
+            }
+
+            update(deltaTime) {
+                if (!this.gameStarted || this.gameOver || this.levelComplete) return;
+
+                if (!this.polandModeActive) {
+                    this.levelTimer += deltaTime; // O tempo continua correndo no fundo
+                    
+                    // ESSA é a linha que faz o número subir!
+                    this.distance += (this.speed * 0.03); 
+                    
+                    // Exibe o número arredondado na tela
+                    document.getElementById('scoreDisplay').innerText = `Distance: ${Math.floor(this.distance)}km`;
+
+                    if (this.levelTimer >= this.levelDuration) {
+                        this.polandModeActive = true;
+                        this.speed = 0; 
+                        document.getElementById('scoreDisplay').innerText = `Welcome to Poland!`;
+                    }
+                }
+
+                if (this.polandModeActive) {
+                    if (this.flagX > this.width - this.flagWidth) {
+                        this.flagX -= 3;
+                    }
+
+                    this.flagHitbox = {
+                        x: this.flagX + 50, // Margem de segurança
+                        y: 50,
+                        width: this.flagWidth - 70,
+                        height: this.flagHeight
+                    };
+
+                    if (this.checkCollision(this.player.getHitbox(), this.flagHitbox)) {
+                        this.triggerVictory();
+                        return; 
+                    }
+                }
+
+                if (!this.polandModeActive) {
+                    this.background.update();
+                    this.speed += 0.001; // Vai acelerando levemente
+                }
+
+                this.player.update(this.input, deltaTime);
+                
+                // Obstáculos
+                if (!this.polandModeActive) {
+                    if (this.obstacleTimer > this.obstacleInterval) {
+                        this.addObstacle();
+                        this.obstacleTimer = 0;
+                        this.obstacleInterval = Math.random() * 800 + 800; // Entre 0.8s e 1.6s
+                    } else {
+                        this.obstacleTimer += deltaTime;
+                    }
+                }
+
+                this.obstacles.forEach(obs => {
+                    if (this.polandModeActive) obs.x -= 8; // Obstáculos fogem da tela rapidamente
+                    else obs.update(deltaTime);
+                    
+                    if (!this.polandModeActive && this.checkCollision(this.player.getHitbox(), obs.getHitbox())) {
+                        this.triggerGameOver();
+                    }
+                });
+
+                // Coletáveis
+                if (!this.polandModeActive) {
+                    if (this.collectibleTimer > this.collectibleInterval) {
+                        this.collectibles.push(new Collectible(this));
+                        this.collectibleTimer = 0;
+                        this.collectibleInterval = Math.random() * 2000 + 2000;
+                    } else {
+                        this.collectibleTimer += deltaTime;
+                    }
+                }
+
+                this.collectibles.forEach(item => {
+                    if (this.polandModeActive) item.x -= 8;
+                    else item.update(deltaTime);
+                    
+                    if (this.checkCollision(this.player.getHitbox(), item.getHitbox())) {
+                        item.markedForDeletion = true;
+                        this.collectItem(item.type);
+                    }
+                });
+
+                this.obstacles = this.obstacles.filter(obs => !obs.markedForDeletion);
+                this.collectibles = this.collectibles.filter(item => !item.markedForDeletion);
+            }
+
+            draw(context) {
+                this.background.draw(context);
+                
+                if (this.polandModeActive) {
+                    context.drawImage(this.flagImage, this.flagX, 70, this.flagWidth, this.flagHeight);
+                }
+
+                this.obstacles.forEach(obs => obs.draw(context));
+                this.collectibles.forEach(item => item.draw(context));
+                
+                this.player.draw(context);
+            }
+
+            addObstacle() {
+                const type = Math.random() < 0.6 ? 'cloud' : 'bird';
+                this.obstacles.push(new Obstacle(this, type));
+            }
+
+            checkCollision(rect1, rect2) {
+                return (
+                    rect1.x < rect2.x + rect2.width &&
+                    rect1.x + rect1.width > rect2.x &&
+                    rect1.y < rect2.y + rect2.height &&
+                    rect1.height + rect1.y > rect2.y
+                );
+            }
+
+            collectItem(type) {
+                this.inventory[type]++;
+                this.updateInventoryUI();
+            }
+
+            updateInventoryUI() {
+                ['pandora', 'flowers', 'pirulito'].forEach(type => {
+                    const el = document.getElementById(`inv-${type}`);
+                    const symbols = { pandora: '💍 Pandora', flowers: '🌹 Flowers', pirulito: '🍭 ChupaChups' };
+                    el.innerText = `${symbols[type]} (${this.inventory[type]})`;
+                    
+                    if(this.inventory[type] > 0) {
+                        el.classList.add('collected');
+                    }
+                });
+            }
+
+            triggerGameOver() {
+                this.gameOver = true;
+                document.getElementById('game-over-screen').style.display = 'block';
+            }
+
+            triggerVictory() {
+                this.levelComplete = true; 
+                const screen = document.getElementById('game-over-screen');
+                screen.style.display = 'block';
+                screen.style.borderColor = '#fff';
+                
+                const totalItems = this.inventory.pandora + this.inventory.flowers + this.inventory.pirulito;
+                
+                screen.innerHTML = `
+                    <h2 style="color: #4CAF50;">We are in Poland!</h2>
+                    <p style="margin-top: 15px; font-size: 12px; line-height: 1.5;">
+                        Congratulations, Vitor just crossed the ocean and landed in Poland.<br>
+                        Total gifts collecteds: ${totalItems}
+                    </p>
+                    <button id="btn-next" style="background: #4CAF50; margin-top: 20px; padding: 10px 20px; color: white; border: 2px solid #fff; cursor: pointer; font-family: inherit; font-size: 12px;">Next Level</button>
+                `;
+
+                document.getElementById('btn-next').addEventListener('click', () => {
+                    // Salva o inventário atual no navegador
+                    localStorage.setItem('jornada_inventory', JSON.stringify(this.inventory));
+                    // Redireciona para o arquivo da Fase 2
+                    window.location.href = "fase3.html"; 
+                });
+            }
+        }
+
+        window.addEventListener('load', function() {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false; 
+            
+            let game = new Game(canvas.width, canvas.height);
+            let lastTime = 0;
+
+            function animate(timeStamp) {
+                const deltaTime = timeStamp - lastTime;
+                lastTime = timeStamp;
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                game.update(deltaTime);
+                game.draw(ctx);
+                
+                if (!game.gameOver) {
+                    requestAnimationFrame(animate);
+                }
+            }
+
+            animate(0);
+
+            document.getElementById('btn-restart').addEventListener('click', () => {
+                document.getElementById('game-over-screen').style.display = 'none';
+                game = new Game(canvas.width, canvas.height);
+                game.gameStarted = true;
+                lastTime = performance.now();
+                animate(lastTime);
+            });
+
+            // --- LÓGICA DO BOTÃO PLAY (INÍCIO DO JOGO) ---
+            const startScreen = document.getElementById('start-screen');
+            const btnPlay = document.getElementById('btn-play');
+
+            function startGame() {
+                if (!game.gameStarted) {
+                    startScreen.style.display = 'none';
+                    game.gameStarted = true;
+                    lastTime = performance.now();
+                }
+            }
+
+            btnPlay.addEventListener('click', startGame);
+
+            window.addEventListener('keydown', (e) => {
+                if ((e.code === 'Space' || e.code === 'Enter') && !game.gameStarted) {
+                    startGame();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
