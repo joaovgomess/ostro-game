@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Jornada até a Polônia - Fase 3: Varsóvia</title>
+    <title>Iza's Birthday - The Game</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-        @import url('https://fonts.googleapis.com/css2?family=Cedarville+Cursive&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Hedvig+Letters+Serif:opsz@12..24&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
 
         * {
@@ -255,7 +254,7 @@
 
             <!-- --- NOVO: TELA DA CARTA --- -->
             <div id="love-letter-screen">
-                <h3 style="color: #ff69b4; margin-bottom: 20px;">Happy Birthday my love!</h3>
+                <h3 style="color: #ff69b4; margin-bottom: 20px;">Happy Birthday My Love!</h3>
                 <div class="letter-content">
                     <p>Dear Izabelka,</p><br>
                     <p style="margin-top: -15px; text-indent: 1.5em;">  First, i want to wish you the happiest of birthdays, a long life filled with joy, and all the success in the world. Please never change the way you are, i hope youre always gonna be this amazing, kind-hearted, incredibly smart, funny, and deeply lovable girl that you are.</p>
@@ -709,7 +708,7 @@
                 
                 // Lógica de Tempo e Final
                 this.levelTimer = 0;
-                this.levelDuration = 40000; // 20s de mundo infinito
+                this.levelDuration = 30000; // 20s de mundo infinito
                 this.girlfriend = null;
                 this.spawnedGirlfriend = false;
                 
@@ -946,11 +945,19 @@
             btnPlay.addEventListener('click', startGame);
 
             window.addEventListener('keydown', (e) => {
-                if ((e.code === 'Space' || e.code === 'Enter') && !window.gameInstance.gameStarted) {
+                // A MÁGICA AQUI: Se a tecla estiver sendo segurada, o código ignora.
+                // Isso obriga o usuário a soltar e apertar de novo!
+                if (e.repeat) return; 
+
+                // Dá o Play no jogo
+                if ((e.code === 'Space' || e.code === 'Enter') && !game.gameStarted) {
                     startGame();
+                } 
+                // Avança o diálogo da Cutscene
+                else if (e.code === 'Space' && game.cutsceneActive) {
+                    game.advanceDialog();
                 }
             });
-
             // --- BOTÃO RESTART (GAME OVER) ---
             document.getElementById('btn-restart').addEventListener('click', () => {
                 document.getElementById('game-over-screen').style.display = 'none';
