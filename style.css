@@ -1,0 +1,782 @@
+/* ==========================================================================
+   Variáveis
+   ========================================================================== */
+
+:root {
+    --color-page: #1a1a2e;
+    --color-frame: #4a4e69;
+    --color-text: #fff;
+    --color-muted: #ccc;
+    --color-accent: #4cc9f0;
+    --color-gold: #ffd166;
+    --color-danger: #ff4d5e;
+    --color-success: #5dd39e;
+    --color-love: #e64980;
+    --color-ink: #14101f;
+
+    --font-pixel: 'Press Start 2P', monospace;
+    --font-body: 'Pixelify Sans', 'Trebuchet MS', sans-serif;
+    --font-letter: 'Hedvig Letters Serif', Georgia, serif;
+    --font-script: 'Caveat', 'Segoe Script', cursive;
+
+    --viewport-height: 100vh;
+    --gutter: clamp(6px, 2vmin, 16px);
+
+    /* O palco é sempre 2:1 e o maior que couber na tela, em pé ou deitada. */
+    --stage-width: min(
+        100vw - 2 * var(--gutter),
+        (var(--viewport-height) - 2 * var(--gutter)) * 2,
+        1100px
+    );
+    /* 1 unidade = 1% da largura do palco: tudo dentro dele escala junto. */
+    --unit: calc(var(--stage-width) / 100);
+}
+
+/* dvh desconta as barras do navegador no celular */
+@supports (height: 100dvh) {
+    :root {
+        --viewport-height: 100dvh;
+    }
+}
+
+/* Paleta de cada fase (o atributo data-level é definido pelo JS).
+   --theme: cor de destaque | --panel-top/bottom: degradê de fundo das telas */
+body {
+    /* Fase 1: pôr do sol de São Paulo */
+    --theme: #ff8fab;
+    --panel-top: rgba(66, 30, 99, 0.96);
+    --panel-bottom: rgba(24, 12, 46, 0.97);
+}
+
+body[data-level='fase2'] {
+    /* Fase 2: céu e oceano */
+    --theme: #4cc9f0;
+    --panel-top: rgba(14, 62, 107, 0.96);
+    --panel-bottom: rgba(6, 24, 48, 0.97);
+}
+
+body[data-level='fase3'] {
+    /* Fase 3: noite em Varsóvia, vermelho e branco da Polônia */
+    --theme: #ff6b7a;
+    --panel-top: rgba(46, 36, 72, 0.96);
+    --panel-bottom: rgba(13, 11, 26, 0.97);
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+html,
+body {
+    height: 100%;
+}
+
+body {
+    background-color: var(--color-page);
+    color: var(--color-text);
+    font-family: var(--font-pixel);
+    overflow: hidden;
+    overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+ul {
+    list-style: none;
+}
+
+button {
+    font-family: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* ==========================================================================
+   Palco (canvas + HUD)
+   ========================================================================== */
+
+.game {
+    height: var(--viewport-height);
+    display: grid;
+    place-items: center;
+}
+
+.stage {
+    position: relative;
+    width: var(--stage-width);
+    aspect-ratio: 2 / 1;
+    border-radius: 8px;
+    background-color: #000;
+    /* Moldura feita com sombra para não roubar espaço (nem distorcer) o canvas */
+    box-shadow: 0 0 0 4px var(--color-frame), 0 0 20px 4px rgba(0, 0, 0, 0.8);
+}
+
+.stage__canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    image-rendering: pixelated;
+    touch-action: none;
+}
+
+.hud {
+    position: absolute;
+    inset: 0;
+    padding: calc(var(--unit) * 2.5);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: calc(var(--unit) * 2);
+    pointer-events: none;
+    text-shadow: 2px 2px 0 #000;
+}
+
+.hud__score {
+    font-size: clamp(8px, calc(var(--unit) * 1.75), 19px);
+}
+
+.hud__level,
+.inventory {
+    font-size: clamp(6px, calc(var(--unit) * 1.25), 14px);
+}
+
+/* Nome da fase: canto inferior esquerdo do palco */
+.hud__level {
+    position: absolute;
+    left: calc(var(--unit) * 2.5);
+    bottom: calc(var(--unit) * 2.5);
+    color: var(--color-muted);
+}
+
+.inventory {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: calc(var(--unit) * 1);
+    text-shadow: none;
+}
+
+.inventory__item {
+    opacity: 0.5;
+    white-space: nowrap;
+    transition: opacity 0.3s;
+}
+
+.inventory__item.is-collected {
+    opacity: 1;
+    color: #ffd700;
+}
+
+.loading {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: clamp(9px, calc(var(--unit) * 1.75), 18px);
+    background-color: #000;
+    border-radius: inherit;
+}
+
+.rotate-hint {
+    display: none;
+}
+
+/* ==========================================================================
+   Telas (início, game over, vitória)
+   Ficam centralizadas na janela, e não presas ao palco, para continuarem
+   legíveis quando o palco fica pequeno (celular em pé).
+   ========================================================================== */
+
+.panel {
+    --pixel: 4px; /* Espessura da moldura "pixelada" */
+
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(100vw - 28px, 520px);
+    height: fit-content;
+    max-height: calc(var(--viewport-height) - 28px);
+    overflow-y: auto;
+    padding: clamp(18px, 4.5vmin, 32px);
+    text-align: center;
+    background:
+        radial-gradient(120% 60% at 50% 0%, color-mix(in srgb, var(--theme) 22%, transparent), transparent 70%),
+        linear-gradient(180deg, var(--panel-top), var(--panel-bottom));
+    /* Quatro sombras retas formam uma moldura com cantos "mordidos" (pixel art);
+       a última escurece o jogo atrás da tela. */
+    box-shadow:
+        0 calc(var(--pixel) * -1) 0 0 var(--theme),
+        0 var(--pixel) 0 0 var(--theme),
+        calc(var(--pixel) * -1) 0 0 0 var(--theme),
+        var(--pixel) 0 0 0 var(--theme),
+        0 0 36px 6px color-mix(in srgb, var(--theme) 40%, transparent),
+        0 0 0 100vmax rgba(8, 6, 20, 0.6);
+    animation: panel-in 0.35s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+
+/* Faixa tracejada decorativa no topo */
+.panel::before {
+    content: '';
+    display: block;
+    height: var(--pixel);
+    margin: 0 auto clamp(14px, 3.5vmin, 22px);
+    width: min(60%, 220px);
+    background: repeating-linear-gradient(
+        90deg,
+        var(--theme) 0 calc(var(--pixel) * 2),
+        transparent calc(var(--pixel) * 2) calc(var(--pixel) * 4)
+    );
+}
+
+.panel__title {
+    font-size: clamp(14px, 4.4vmin, 22px);
+    line-height: 1.5;
+    color: var(--theme);
+    text-shadow:
+        3px 3px 0 rgba(0, 0, 0, 0.65),
+        0 0 22px color-mix(in srgb, var(--theme) 60%, transparent);
+}
+
+.panel__lead,
+.panel__result p,
+.panel__row dd {
+    font-family: var(--font-body);
+    font-size: clamp(14px, 3.6vmin, 16px);
+    line-height: 1.5;
+    color: #ece8f7;
+}
+
+.panel__lead,
+.panel__result p {
+    margin-top: clamp(12px, 3vmin, 18px);
+    text-wrap: pretty;
+}
+
+.panel__info {
+    margin-top: clamp(14px, 3.5vmin, 20px);
+    display: grid;
+    gap: 10px;
+    text-align: left;
+}
+
+.panel__row {
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.07);
+    border-left: var(--pixel) solid var(--color-gold);
+}
+
+.panel__label {
+    margin-bottom: 6px;
+    font-size: 9px;
+    line-height: 1.4;
+    letter-spacing: 0.05em;
+    color: var(--color-gold);
+}
+
+.panel em {
+    font-style: normal;
+    font-weight: 700;
+    color: var(--color-danger);
+}
+
+/* --- Game over: vermelho, com um tremor de "dano" --- */
+.panel--gameover {
+    --theme: var(--color-danger);
+    --panel-top: rgba(74, 16, 32, 0.96);
+    --panel-bottom: rgba(22, 8, 16, 0.97);
+
+    width: min(100vw - 28px, 400px);
+    animation: panel-hit 0.45s ease-out both;
+}
+
+.panel--gameover .panel__title {
+    font-size: clamp(18px, 5.5vmin, 28px);
+    text-shadow:
+        3px 0 0 rgba(76, 201, 240, 0.7),
+        -3px 0 0 rgba(255, 255, 255, 0.25),
+        0 0 22px rgba(255, 77, 94, 0.7);
+}
+
+/* --- Vitória: dourado, com "estrelinhas" ao fundo --- */
+.panel--victory {
+    --theme: var(--color-gold);
+
+    background:
+        radial-gradient(2px 2px at 12% 22%, #fff, transparent),
+        radial-gradient(2px 2px at 86% 16%, #fff, transparent),
+        radial-gradient(3px 3px at 78% 58%, var(--color-gold), transparent),
+        radial-gradient(3px 3px at 18% 70%, var(--color-gold), transparent),
+        radial-gradient(2px 2px at 60% 88%, #fff, transparent),
+        radial-gradient(120% 60% at 50% 0%, rgba(255, 209, 102, 0.22), transparent 70%),
+        linear-gradient(180deg, var(--panel-top), var(--panel-bottom));
+}
+
+/* A última linha é o total de presentes: vira um "selo" */
+.panel__result p:last-child {
+    display: inline-block;
+    padding: 8px 14px;
+    font-family: var(--font-pixel);
+    font-size: clamp(8px, 2.4vmin, 10px);
+    line-height: 1.6;
+    color: var(--color-gold);
+    background: rgba(255, 209, 102, 0.1);
+    border: 2px dashed var(--color-gold);
+}
+
+@keyframes panel-in {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.94);
+    }
+}
+
+@keyframes panel-hit {
+    0% {
+        opacity: 0;
+        transform: scale(1.06);
+    }
+    25% {
+        opacity: 1;
+        transform: translateX(-8px);
+    }
+    50% {
+        transform: translateX(6px);
+    }
+    75% {
+        transform: translateX(-3px);
+    }
+}
+
+/* ==========================================================================
+   Botões (estilo fliperama: "afundam" ao clicar)
+   ========================================================================== */
+
+.btn {
+    --btn-color: var(--theme);
+    --btn-depth: 5px;
+
+    margin-top: clamp(18px, 4.5vmin, 26px);
+    margin-bottom: var(--btn-depth);
+    padding: 14px 26px;
+    font-size: 12px;
+    line-height: 1;
+    color: var(--color-ink);
+    background: var(--btn-color);
+    border: none;
+    box-shadow:
+        0 var(--btn-depth) 0 0 color-mix(in srgb, var(--btn-color) 55%, #000),
+        0 calc(var(--btn-depth) + 6px) 14px rgba(0, 0, 0, 0.45);
+    transition: transform 0.08s, box-shadow 0.08s, filter 0.15s;
+    touch-action: manipulation;
+}
+
+.btn:hover {
+    filter: brightness(1.12);
+}
+
+.btn:active {
+    transform: translateY(var(--btn-depth));
+    box-shadow: 0 0 0 0 transparent;
+}
+
+.btn:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 3px;
+}
+
+.btn--success {
+    --btn-color: var(--color-success);
+}
+
+.btn--pulse {
+    animation: btn-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes btn-pulse {
+    50% {
+        filter: brightness(1.2);
+        transform: translateY(-2px);
+    }
+}
+
+/* ==========================================================================
+   Caixa de diálogo (estilo Pokémon)
+   ========================================================================== */
+
+.dialog {
+    position: absolute;
+    left: 5%;
+    right: 5%;
+    bottom: 5%;
+    min-height: 25%;
+    padding: calc(var(--unit) * 1.9);
+    padding-bottom: calc(var(--unit) * 3.5);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: calc(var(--unit) * 1.25);
+    text-align: left;
+    color: #000;
+    background-color: #fff;
+    border: max(3px, calc(var(--unit) * 0.5)) solid #000;
+    border-radius: 10px;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+}
+
+.dialog__speaker {
+    font-size: clamp(8px, calc(var(--unit) * 1.25), 14px);
+    color: #ff69b4;
+}
+
+.dialog[data-speaker='vitor'] .dialog__speaker {
+    color: var(--color-accent);
+}
+
+.dialog__text {
+    font-size: clamp(9px, calc(var(--unit) * 1.5), 16px);
+    line-height: 1.6;
+}
+
+.dialog__hint {
+    position: absolute;
+    right: calc(var(--unit) * 1.9);
+    bottom: calc(var(--unit) * 1.25);
+    font-size: clamp(7px, calc(var(--unit) * 1.25), 14px);
+    animation: blink 1s infinite;
+}
+
+.dialog__hint-touch {
+    display: none;
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+/* ==========================================================================
+   Carta final (papel de carta com borda de correio aéreo:
+   verde do Brasil de um lado, vermelho da Polônia do outro)
+   ========================================================================== */
+
+.letter {
+    --paper: #fffaf2;
+    --stripe: 10px;
+
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(100vw - 28px, 620px);
+    height: fit-content;
+    max-height: calc(var(--viewport-height) - 28px);
+    overflow-y: auto;
+    padding: clamp(20px, 5vmin, 40px);
+    text-align: center;
+    color: #3d2b2b;
+    background:
+        radial-gradient(90% 50% at 50% 0%, rgba(230, 73, 128, 0.1), transparent 70%),
+        linear-gradient(180deg, var(--paper), #fdefe2);
+    border: var(--stripe) solid;
+    border-image: repeating-linear-gradient(
+        -45deg,
+        #d62839 0 var(--stripe),
+        var(--paper) var(--stripe) calc(var(--stripe) * 2),
+        #1f9d55 calc(var(--stripe) * 2) calc(var(--stripe) * 3),
+        var(--paper) calc(var(--stripe) * 3) calc(var(--stripe) * 4)
+    ) 10;
+    box-shadow:
+        0 20px 50px rgba(0, 0, 0, 0.55),
+        0 0 0 100vmax rgba(38, 10, 30, 0.72);
+    user-select: text;
+    -webkit-user-select: text;
+    animation: letter-in 0.7s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.letter__seal {
+    display: block;
+    width: clamp(34px, 9vmin, 44px);
+    height: auto;
+    margin: 0 auto 6px;
+    filter: drop-shadow(0 3px 4px rgba(150, 20, 50, 0.35));
+    animation: heartbeat 1.4s ease-in-out infinite;
+}
+
+.letter__title {
+    font-family: var(--font-script);
+    font-size: clamp(28px, 8vmin, 42px);
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--color-love);
+}
+
+/* Divisor fino sob o título */
+.letter__title::after {
+    content: '';
+    display: block;
+    width: min(60%, 240px);
+    height: 2px;
+    margin: 12px auto 0;
+    background: linear-gradient(90deg, transparent, var(--color-love), transparent);
+}
+
+.letter__body {
+    margin-top: clamp(14px, 3.5vmin, 22px);
+    font-family: var(--font-letter);
+    font-size: clamp(14px, 1.2vmin + 10px, 17px);
+    line-height: 1.6;
+    text-align: left;
+    text-wrap: pretty;
+}
+
+.letter__body p + p {
+    margin-top: 0.7em;
+}
+
+.letter__greeting,
+.letter__signoff {
+    font-family: var(--font-script);
+    font-size: 1.55em;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--color-love);
+}
+
+.letter__paragraph {
+    text-indent: 1.5em;
+}
+
+.letter__closing {
+    font-style: italic;
+}
+
+.letter__signoff {
+    text-align: right;
+}
+
+.letter__body .letter__signoff + .letter__signoff {
+    margin-top: 0.1em;
+}
+
+.btn--love {
+    --btn-color: var(--color-love);
+
+    color: #fff;
+    border-radius: 999px;
+    font-size: 11px;
+}
+
+@keyframes letter-in {
+    from {
+        opacity: 0;
+        transform: translateY(40px) rotate(-2deg);
+    }
+}
+
+@keyframes heartbeat {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+    15% {
+        transform: scale(1.14);
+    }
+    30% {
+        transform: scale(1);
+    }
+    45% {
+        transform: scale(1.1);
+    }
+}
+
+/* ==========================================================================
+   Controles de toque
+   ========================================================================== */
+
+.touch-controls {
+    --button-size: clamp(52px, 15vmin, 76px);
+
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    display: none;
+    justify-content: space-between;
+    align-items: flex-end;
+    pointer-events: none;
+}
+
+.touch-controls__group {
+    display: flex;
+    gap: calc(var(--button-size) * 0.25);
+}
+
+.touch-controls__button {
+    width: var(--button-size);
+    height: var(--button-size);
+    font-size: calc(var(--button-size) * 0.35);
+    color: #fff;
+    background: rgba(0, 0, 0, 0.45);
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.touch-controls__button:active {
+    background: rgba(76, 201, 240, 0.6);
+}
+
+/* ==========================================================================
+   Responsividade
+   ========================================================================== */
+
+/* Dispositivos de toque (pela media query ou detectado no primeiro toque) */
+.has-touch .touch-controls {
+    display: flex;
+}
+
+.has-touch .dialog__hint-key {
+    display: none;
+}
+
+.has-touch .dialog__hint-touch {
+    display: inline;
+}
+
+@media (pointer: coarse) {
+    .touch-controls {
+        display: flex;
+    }
+
+    .dialog__hint-key {
+        display: none;
+    }
+
+    .dialog__hint-touch {
+        display: inline;
+    }
+}
+
+/* Tela em pé: o palco fica pequeno, então o diálogo sai de dentro dele e vai para baixo */
+@media (orientation: portrait) {
+    .dialog {
+        top: calc(100% + 16px);
+        bottom: auto;
+        left: 0;
+        right: 0;
+        min-height: 0;
+        padding: 14px 14px 30px;
+        gap: 10px;
+        border-width: 3px;
+    }
+
+    .dialog__speaker {
+        font-size: 10px;
+    }
+
+    .dialog__text {
+        font-size: 11px;
+    }
+
+    .dialog__hint {
+        right: 12px;
+        bottom: 10px;
+        font-size: 9px;
+    }
+
+    .touch-controls {
+        bottom: max(8vh, env(safe-area-inset-bottom));
+    }
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+    .rotate-hint {
+        display: block;
+        position: fixed;
+        top: max(16px, env(safe-area-inset-top));
+        left: 0;
+        right: 0;
+        padding: 0 16px;
+        text-align: center;
+        font-size: 8px;
+        line-height: 1.6;
+        color: var(--color-muted);
+    }
+}
+
+/* Celular deitado: pouca altura, então as telas ficam mais largas e compactas */
+@media (orientation: landscape) and (max-height: 480px) {
+    .panel {
+        width: min(100vw - 28px, 720px);
+        padding: 14px 20px;
+    }
+
+    .panel::before {
+        margin-bottom: 10px;
+    }
+
+    .panel__lead,
+    .panel__result p {
+        margin-top: 8px;
+    }
+
+    /* Objetivo e controles lado a lado */
+    .panel__info {
+        margin-top: 10px;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .panel--gameover {
+        width: min(100vw - 28px, 400px);
+    }
+
+    .btn {
+        margin-top: 14px;
+        padding: 12px 22px;
+    }
+
+    .letter {
+        padding: 16px 24px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .panel,
+    .letter,
+    .letter__seal,
+    .btn--pulse,
+    .dialog__hint {
+        animation: none;
+    }
+
+    .inventory__item {
+        transition: none;
+    }
+}
